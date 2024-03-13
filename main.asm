@@ -1,0 +1,420 @@
+;**********
+;Universidad del Valle de Guatemala
+;IE2023: Programación de Microcontroladores
+; Prelab_1.asm
+;Autor: José Velásquez
+;Proyecto: Prelab3
+;Hardware: ATMEGA328P
+;Creado: xd
+;Última modificación: xd
+;**********
+;**********
+.include "M328PDEF.inc"
+.cseg
+.org 0x0000
+JMP SETUP
+.org 0x0008
+JMP ISR_INT1
+.org 0x001A
+JMP ISR_TIMER1_OVF
+.org 0x0020
+JMP ISR_TIMER0_OVF
+//.def MODO = R29 
+; Configuración de la Pila
+;**********
+SETUP:
+LDI R16, LOW(RAMEND)
+OUT SPL, R16
+LDI R17, HIGH(RAMEND)
+OUT SPH, R17
+;SET FRECUENCIAS	
+LDI		R16, (1 << CLKPCE)
+STS		CLKPR, R16
+LDI		R16, (1 << CLKPS1)
+STS		CLKPR, R16
+
+;**********
+;**********
+LDI		R16, 0x00	
+STS		UCSR0B, R16		
+LDI		R16, 0xFF //puerto D salida
+OUT		DDRD, R16
+LDI		R16, 0x00
+OUT		PORTD, R16
+CALL	Init_T0
+CALL	Init_T1
+;Contador 1
+LDI		ZH, HIGH(TABLA7SEG << 1);parte alta y baja de la tabla de 7 segmentos
+LDI		ZL, LOW(TABLA7SEG << 1)	
+
+LDI		R16,(1 << DDB0) | (1 << DDB1) | (1 << DDB2) | (1 << DDB3)  ; PUERRTO B COMO SALIDA
+OUT		DDRB, R16
+	
+SBI		DDRB, PB4
+//salida 
+CBI		DDRC, PC0		;Habilitando PC del 0 al 3 como pull up
+CBI		DDRC, PC1		;
+CBI		DDRC, PC2		;
+CBI		DDRC, PC3		;
+SBI		DDRC, PC4
+SBI		DDRC, PC5
+
+LDI		R16, (1 << PCINT8) | (1 << PCINT9) |  (1 << PCINT10) | (1 << PCINT11)//SELECCION DE LOS BOTONES DE LAS INTERRUPCIONES
+STS		PCMSK1, R16
+
+LDI		R16, (1 << PCIE1)//ELEJIMOS EL PUERTO C PARA LAS INTERRUPCIONES
+STS		PCICR, R16
+SEI
+
+//LOS REGISTROS DEL 17 AL 25 SIRVEN EXCLUSIVAMENTE PARA EL RELOJ
+//VAMOS A UTILIZAR APARTIR DEL REGISTRO 26  
+
+;**********
+; MAIN
+;**********
+TABLA7SEG: .DB 0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F
+LDI		R17, 0x00	
+LDI		R19, 0x00
+LDI		R23, 0x00
+LDI		R25, 0X00
+LDI		R29, 0X00
+LDI		R21, 0x00
+LDI		R24, 0x00
+LDI		R26, 0X00
+LDI		R27, 0X00
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ESTADOS:
+	CPI R29, 0
+	BREQ HORAS
+	CPI R29, 1
+	BREQ SALTAFECHA
+	CPI R29, 2
+	BREQ SALTAALARMA
+	CPI R29, 3
+	BREQ RESETMODO
+	RJMP ESTADOS 
+RESETMODO:
+	LDI R29, 0x00
+	RJMP ESTADOS
+SALTAFECHA:
+	RJMP FECHA
+SALTAALARMA:
+	RJMP ALARMA
+HORAS:
+	
+	OUT PORTD, R28
+	CBI PORTB, 4
+	SBI PORTC, 4//muestra en que modo estamos
+//display primero
+///////////////////////////////////////
+	SBI		PORTB, PB3	
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R17
+	LPM		R18, Z
+	SBRC R27, 0
+	ORI R18, 0B1000_0000
+	OUT		PORTD, R18
+
+	CALL	Delay
+	CBI		PORTB, PB3
+	//display segundo
+	SBI		PORTB, PB2
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R19
+	LPM		R18, Z
+	SBRC R27, 0
+	ORI R18, 0B1000_0000
+	OUT		PORTD, R18
+
+	CALL	Delay
+	CBI		PORTB, PB2
+	//display tercero
+	SBI		PORTB, PB1
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R23
+	LPM		R18, Z
+	SBRC R27, 0
+	ORI R18, 0B1000_0000
+	OUT		PORTD, R18
+	
+	CALL	Delay
+	CBI		PORTB, PB1
+	//DISPLAY MAYOR
+	SBI		PORTB, PB0
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R25
+	LPM		R18, Z
+	SBRC R27, 0
+	ORI R18, 0B1000_0000
+	OUT		PORTD, R18
+	
+	CALL	Delay
+	CBI		PORTB, PB0
+
+//********************************
+	
+	CPI		R20, 180//modificalo YAAAAAAAAAAA
+	BRNE	ESTADOS
+	CLR		R20
+	INC		R17
+	CPI		R17, 0b0000_1010
+	//RJMP	ESTADOS
+	BREQ	BORRARMINUTOS1
+	RJMP	ESTADOS
+//////OSCILADOR DEL TIMER 1
+	CPI		R27, 50
+	// SBRS R27, 0
+	// JMP APAGAR
+	// JMP ENCENDERE
+	BRNE	ENCENDERE
+	//CLR		R27
+	RJMP ESTADOS
+
+
+BORRARMINUTOS1:
+	LDI		R17, 0x00
+	INC		R19
+	CPI		R19, 0b0000_0110
+	BREQ	BORRARMINUTOS2
+	RJMP	ESTADOS//cambiarlo cuando hagamos lo de los estados 
+
+BORRARMINUTOS2:
+	LDI		R19, 0x00
+	//RJMP	MAIN_LOOP
+	INC		R23
+	CPI		R23, 0b0000_0100
+	BREQ	COMPARAR_HORAS
+	CPI R23, 10
+	BREQ LIMPIAR_HORAS_S2
+	RJMP	ESTADOS
+COMPARAR_HORAS:
+	CPI		R25, 0b0000_0010
+	BREQ	LIMPIARH
+	//CPI		R23, 0b0000_1010
+	//BREQ	LIMPIAR_HORAS_S2
+	RJMP	HORAS
+LIMPIARH:
+	LDI R23, 0x00
+	LDI R25, 0x00
+	RJMP ESTADOS
+LIMPIAR_HORAS_S2:
+	LDI		R23, 0x00
+	INC		R25
+	RJMP	ESTADOS
+ENCENDERE:
+	//LDI		R28, 0b0100_0000
+	RJMP	ESTADOS
+//////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+FECHA: 
+CBI PORTC, 4//muestra en que modo estamos
+SBI PORTC, 5//muestra en que modo estamos
+SBI PORTD, 7 
+///////////////AQUI YA EMPIEZA LA PROGRA DE LA FECHA///////////////////////////////
+	SBI		PORTB, PB3	
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R0
+	LPM		R22, Z
+	OUT		PORTD, R22
+
+	CALL	Delay
+	CBI		PORTB, PB3
+	//display segundo
+	SBI		PORTB, PB2
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R1
+	LPM		R22, Z
+	OUT		PORTD, R22
+
+	CALL	Delay
+	CBI		PORTB, PB2
+	//display tercero
+	SBI		PORTB, PB1
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R2
+	LPM		R22, Z
+	OUT		PORTD, R22
+	
+	CALL	Delay
+	CBI		PORTB, PB1
+	//DISPLAY MAYOR
+	SBI		PORTB, PB0
+	LDI		ZL, LOW(TABLA7SEG << 1)
+	ADD		ZL, R3//AYUDALO
+	LPM		R22, Z
+	OUT		PORTD, R22
+	
+	CALL	Delay
+	CBI		PORTB, PB0
+
+//********************************
+	INC		R0
+	MOV		R16, R0
+	CPI		R16, 0b0000_0100
+	BREQ	COMPARADORMES1
+	CPI		R16, 0b0000_1010
+	BREQ	RESETEODELMES1
+	RJMP	ESTADOS
+
+
+RESETEODELMES1:
+	LDI		R16, 0x00
+	MOV		R0, R16 
+	RJMP	ESTADOS
+
+
+COMPARADORMES1:
+	MOV R16, R1
+	CPI R16, 0B0000_0001
+	BREQ BORRARMES2
+RJMP ESTADOS
+
+
+BORRARMESES2:
+	LDI		R16, 0x01
+	MOV		R0, R16 
+	LDI		R16, 0x01
+	MOV		R1, R16 
+	RJMP	ESTADOS
+BORRARMES2:
+	LDI		R16, 0x00
+	MOV		R1, R16
+	//RJMP	MAIN_LOOP
+	INC		R2
+	MOV		R16, R2
+	CPI		R23, 0b0000_0100
+	BREQ	COMPARAR_DIAS
+	CPI R23, 10
+	BREQ LIMPIARDIAS
+	RJMP	ESTADOS
+COMPARAR_DIAS:
+	MOV		R16, r3
+	CPI		R25, 0b0000_0010
+	BREQ	LIMPIARDIAS
+	//CPI		R23, 0b0000_1010
+	//BREQ	LIMPIAR_HORAS_S2
+	RJMP	FECHA
+LIMPIARDIAS:
+	LDI R23, 0x00
+	LDI R25, 0x00
+	RJMP ESTADOS
+LIMPIARDIAS2:
+	LDI		R23, 0x00
+	INC		R25
+	RJMP	ESTADOS
+
+
+
+
+
+
+
+
+
+/////////////////////
+ALARMA:
+CBI PORTC, 4
+CBI PORTC, 5
+SBI PORTB, 4//muestra en que modo estamos
+RJMP ESTADOS
+
+;**********
+; Inicializar Timer 0
+;**********
+Init_T0: 
+	LDI		R16, (1 << CS02) | (1 << CS00) ;Configurar el prescaler a 1024 
+	OUT		TCCR0B, R16
+
+	LDI		R16, 99					
+	OUT		TCNT0, R16					
+
+	LDI		R16, (1<<TOIE0)
+	STS		TIMSK0, R16	
+	RET
+
+Init_T1: 
+	LDI		R16, 0b00000101
+	STS		TCCR1B, R16
+	LDI		R16, 0xF8					;Cargar el valor de desbordamiento
+	STS		TCNT1H, R16					;Cargar el valor inicial del contador
+	LDI		R16, 0x5F					;Cargar el valor de desbordamiento
+	STS		TCNT1L, R16					;Cargar el valor inicial del contador
+
+	LDI		R16, (1<<TOIE1)
+	STS		TIMSK1, R16	
+	RET
+;**********
+//SUBRUTINASSS
+;**********
+;**********
+//TIMER 0
+;**********
+ISR_TIMER0_OVF://ESTO NO LO TOQUES
+	PUSH	R16
+	IN		R16, SREG
+	PUSH	R16
+
+	LDI		R16, 99
+	OUT		TCNT0, R16
+	//SBI		TIFR0, TOV0
+	INC		R20
+
+	POP		R16
+	OUT		SREG, R16
+	POP		R16
+	RETI
+ISR_TIMER1_OVF://ESTO NO LO TOQUES
+	PUSH	R16
+	IN		R16, SREG
+	PUSH	R16
+
+	LDI		R16, 0xF8					;Cargar el valor de desbordamiento
+	STS		TCNT1H, R16					;Cargar el valor inicial del contador
+	LDI		R16, 0x5F					;Cargar el valor de desbordamiento
+	STS		TCNT1L, R16					;Cargar el valor inicial del contador
+	//SBI		TIFR0, TOV0
+	INC		R27
+
+	POP		R16
+	OUT		SREG, R16
+	POP		R16
+	RETI
+ISR_INT1:
+	PUSH R16
+	IN R16, SREG 
+	PUSH R16 
+
+	IN R16, PINC
+	SBRS R16, PC0
+	INC R29
+
+	IN	R16, PINC
+	SBRS	R16, PC1
+	INC R4//PARA INCREMENTAR
+
+	IN	R16, PINC
+	SBRS	R16, PC2
+	DEC R4//PARA DECREMENTAR
+
+	POP	R16
+	OUT	SREG, R16
+	POP	R16
+	RETI
+DELAY:
+	LDI R16, 120
+	DELAY2:
+	DEC R16
+	BRNE DELAY2
+	RET
