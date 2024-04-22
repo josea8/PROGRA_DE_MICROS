@@ -1,47 +1,83 @@
-#define F_CPU 16000000
+/*
+ * laboratorio6.c
+ *
+ * Created: 21/04/2024 18:26:51
+ * Author : Jose
+ */ 
+#define F_CPU 16000000UL
 #include <avr/io.h>
-#include <util/delay.h>
 #include <avr/interrupt.h>
-#include "PWM2/PWM2.h"
-#include "PWM1/PWM1.h"
-#define ADC_MAX 255
-#define DUTY_MIN 0
-#define DUTY_MAX 40
 
-uint8_t dutyCycle = 0;
-uint8_t dutyCycle1 = 0;
+void initUART9600(void);
+void writeUART(char caracter);
+void WriteTextUART(char * Texto);
+void setup(void);
+uint8_t ValorTX;
 
-void setup(void){
-	cli();
-	UCSR0B = 0;
+
+void setup(){
+	DDRB |= (1<<DDB0) | (1<<DDB1) | (1<<DDB2) | (1<<DDB3) | (1<<DDB4) | (1<<DDB5);//salidas en en el puerto B
+	initUART9600();
 	sei();
-	initADC();
-}
-
-uint8_t mapADCtoDC(uint8_t adcValue){
-	return(uint8_t)(((float)adcValue / ADC_MAX) * (DUTY_MAX - DUTY_MIN) + DUTY_MIN);
 }
 
 int main(void)
 {
-	
 	setup();
 	
-	initPWM1FastA(no_invertido, 1024);
-	initPWM2Fast_16bit(no_invertido, 8);
+	writeUART('m');
+	writeUART('e');
+	writeUART('n');
+	writeUART('s');
+	writeUART('a');
+	writeUART('j');
+	writeUART('e');
+	writeUART('\n');
+	/*
+	writeUART(10);
+	writeUART(13);*/
+	WriteTextUART("Dame un valor para los leds:\r\n");
     while (1) 
     {
-		//dutyCycle1 = A; //(7.84*ADCH)+2000;
-		dutyCycle = mapADCtoDC(ADCH);
-		ADCSRA |= (1<<ADSC);
-		updateDutyCicleA1(dutyCycle);
-		updateDutyCicleA1(dutyCycle1);
+		
     }
 }
 
-ISR(ADC_vect){
-	dutyCycle = ADCH;
-	
-	//valorADC2 = ADCH;
-	ADCSRA |=(1<<ADIF);
+void initUART9600(void){
+	//rx como entrada y yx como salida
+	DDRD &= ~(1<<DDD0);
+	DDRD |= (1<<DDD1);
+	//CONFIGURACION DEL UCSR0A
+	UCSR0A = 0;
+	//CONFIGURACION DEL UCSR0B > DONDE HABILITAMOS ISR DE RECEPCION, HABILITAMOS EL TX Y RX
+	UCSR0B = 0;
+	UCSR0B = (1 << RXCIE0) | (1 << RXEN0) | (1 << TXEN0);
+	//CONFIGURAR EL UCSR0C > ASINCRONO, SIN PARIDAD, 1 SOLO BIT DE STOP, DATA BITS: 8
+	UCSR0C = 0;
+	UCSR0C |= (1 << UCSZ01)|(1 << UCSZ00);
+	//CONFIGURACION DEL BAUDRATE: 9600
+	UBRR0 = 103;
 }
+void WriteTextUART(char * Texto){
+	uint8_t i;
+	for (i=0; Texto[i]!= '\0'; i++){ //para poder dar valores conforme el simbolo que estamos recibiendo de la terminal
+		while (!(UCSR0A & (1<<UDRE0)));
+		UDR0 = Texto[i];
+	}
+}
+
+
+
+void writeUART(char caracter){
+	while(!(UCSR0A & (1 << UDRE0)));
+	UDR0 = caracter;
+}
+
+ISR(USART_RX_vect){
+	ValorTX = UDR0;
+	while(!(UCSR0A & (1 << UDRE0)));
+	UDR0 = ValorTX;
+	PORTB = ValorTX;
+}
+
+	
